@@ -1,0 +1,120 @@
+# JSch (SSH) creates these by name from its settings, so their names and
+# no-argument constructors must survive shrinking. Generated from jsch 0.2.26.
+# BouncyCastle (bc), GSS-API and zlib variants are left out: they can't work on
+# Android without extra libraries, and JSch skips anything it can't load.
+-keep class com.jcraft.jsch.CipherNone { <init>(); }
+-keep class com.jcraft.jsch.DH25519 { <init>(); }
+-keep class com.jcraft.jsch.DH25519MLKEM768 { <init>(); }
+-keep class com.jcraft.jsch.DH25519SNTRUP761 { <init>(); }
+-keep class com.jcraft.jsch.DH448 { <init>(); }
+-keep class com.jcraft.jsch.DHEC256 { <init>(); }
+-keep class com.jcraft.jsch.DHEC256MLKEM768 { <init>(); }
+-keep class com.jcraft.jsch.DHEC384 { <init>(); }
+-keep class com.jcraft.jsch.DHEC384MLKEM1024 { <init>(); }
+-keep class com.jcraft.jsch.DHEC521 { <init>(); }
+-keep class com.jcraft.jsch.DHG1 { <init>(); }
+-keep class com.jcraft.jsch.DHG14 { <init>(); }
+-keep class com.jcraft.jsch.DHG14224 { <init>(); }
+-keep class com.jcraft.jsch.DHG14256 { <init>(); }
+-keep class com.jcraft.jsch.DHG15 { <init>(); }
+-keep class com.jcraft.jsch.DHG15256 { <init>(); }
+-keep class com.jcraft.jsch.DHG15384 { <init>(); }
+-keep class com.jcraft.jsch.DHG16 { <init>(); }
+-keep class com.jcraft.jsch.DHG16384 { <init>(); }
+-keep class com.jcraft.jsch.DHG17 { <init>(); }
+-keep class com.jcraft.jsch.DHG18 { <init>(); }
+-keep class com.jcraft.jsch.DHGEX1 { <init>(); }
+-keep class com.jcraft.jsch.DHGEX224 { <init>(); }
+-keep class com.jcraft.jsch.DHGEX256 { <init>(); }
+-keep class com.jcraft.jsch.DHGEX384 { <init>(); }
+-keep class com.jcraft.jsch.DHGEX512 { <init>(); }
+-keep class com.jcraft.jsch.UserAuthGSSAPIWithMIC { <init>(); }
+-keep class com.jcraft.jsch.UserAuthKeyboardInteractive { <init>(); }
+-keep class com.jcraft.jsch.UserAuthNone { <init>(); }
+-keep class com.jcraft.jsch.UserAuthPassword { <init>(); }
+-keep class com.jcraft.jsch.UserAuthPublicKey { <init>(); }
+-keep class com.jcraft.jsch.jbcrypt.JBCrypt { <init>(); }
+-keep class com.jcraft.jsch.jce.AES128CBC { <init>(); }
+-keep class com.jcraft.jsch.jce.AES128CTR { <init>(); }
+-keep class com.jcraft.jsch.jce.AES128GCM { <init>(); }
+-keep class com.jcraft.jsch.jce.AES192CBC { <init>(); }
+-keep class com.jcraft.jsch.jce.AES192CTR { <init>(); }
+-keep class com.jcraft.jsch.jce.AES256CBC { <init>(); }
+-keep class com.jcraft.jsch.jce.AES256CTR { <init>(); }
+-keep class com.jcraft.jsch.jce.AES256GCM { <init>(); }
+-keep class com.jcraft.jsch.jce.ARCFOUR { <init>(); }
+-keep class com.jcraft.jsch.jce.ARCFOUR128 { <init>(); }
+-keep class com.jcraft.jsch.jce.ARCFOUR256 { <init>(); }
+-keep class com.jcraft.jsch.jce.BlowfishCBC { <init>(); }
+-keep class com.jcraft.jsch.jce.BlowfishCTR { <init>(); }
+-keep class com.jcraft.jsch.jce.DH { <init>(); }
+-keep class com.jcraft.jsch.jce.ECDHN { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACMD5 { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACMD596 { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACMD596ETM { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACMD5ETM { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACSHA1 { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACSHA196 { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACSHA196ETM { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACSHA1ETM { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACSHA224SSHCOM { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACSHA256 { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACSHA2562SSHCOM { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACSHA256ETM { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACSHA256SSHCOM { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACSHA384SSHCOM { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACSHA512 { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACSHA512ETM { <init>(); }
+-keep class com.jcraft.jsch.jce.HMACSHA512SSHCOM { <init>(); }
+-keep class com.jcraft.jsch.jce.KeyPairGenDSA { <init>(); }
+-keep class com.jcraft.jsch.jce.KeyPairGenECDSA { <init>(); }
+-keep class com.jcraft.jsch.jce.KeyPairGenEdDSA { <init>(); }
+-keep class com.jcraft.jsch.jce.KeyPairGenRSA { <init>(); }
+-keep class com.jcraft.jsch.jce.MD5 { <init>(); }
+-keep class com.jcraft.jsch.jce.MLKEM1024 { <init>(); }
+-keep class com.jcraft.jsch.jce.MLKEM768 { <init>(); }
+-keep class com.jcraft.jsch.jce.PBKDF { <init>(); }
+-keep class com.jcraft.jsch.jce.PBKDF2HMACSHA1 { <init>(); }
+-keep class com.jcraft.jsch.jce.PBKDF2HMACSHA224 { <init>(); }
+-keep class com.jcraft.jsch.jce.PBKDF2HMACSHA256 { <init>(); }
+-keep class com.jcraft.jsch.jce.PBKDF2HMACSHA384 { <init>(); }
+-keep class com.jcraft.jsch.jce.PBKDF2HMACSHA512 { <init>(); }
+-keep class com.jcraft.jsch.jce.PBKDF2HMACSHA512224 { <init>(); }
+-keep class com.jcraft.jsch.jce.PBKDF2HMACSHA512256 { <init>(); }
+-keep class com.jcraft.jsch.jce.Random { <init>(); }
+-keep class com.jcraft.jsch.jce.SHA1 { <init>(); }
+-keep class com.jcraft.jsch.jce.SHA224 { <init>(); }
+-keep class com.jcraft.jsch.jce.SHA256 { <init>(); }
+-keep class com.jcraft.jsch.jce.SHA384 { <init>(); }
+-keep class com.jcraft.jsch.jce.SHA512 { <init>(); }
+-keep class com.jcraft.jsch.jce.SignatureDSA { <init>(); }
+-keep class com.jcraft.jsch.jce.SignatureECDSA256 { <init>(); }
+-keep class com.jcraft.jsch.jce.SignatureECDSA384 { <init>(); }
+-keep class com.jcraft.jsch.jce.SignatureECDSA521 { <init>(); }
+-keep class com.jcraft.jsch.jce.SignatureEd25519 { <init>(); }
+-keep class com.jcraft.jsch.jce.SignatureEd448 { <init>(); }
+-keep class com.jcraft.jsch.jce.SignatureRSA { <init>(); }
+-keep class com.jcraft.jsch.jce.SignatureRSASHA224SSHCOM { <init>(); }
+-keep class com.jcraft.jsch.jce.SignatureRSASHA256 { <init>(); }
+-keep class com.jcraft.jsch.jce.SignatureRSASHA256SSHCOM { <init>(); }
+-keep class com.jcraft.jsch.jce.SignatureRSASHA384SSHCOM { <init>(); }
+-keep class com.jcraft.jsch.jce.SignatureRSASHA512 { <init>(); }
+-keep class com.jcraft.jsch.jce.SignatureRSASHA512SSHCOM { <init>(); }
+-keep class com.jcraft.jsch.jce.TripleDESCBC { <init>(); }
+-keep class com.jcraft.jsch.jce.TripleDESCTR { <init>(); }
+-keep class com.jcraft.jsch.jce.XDH { <init>(); }
+-dontwarn org.bouncycastle.**
+-dontwarn org.newsclub.**
+-dontwarn com.sun.jna.**
+-dontwarn org.slf4j.**
+-dontwarn org.apache.logging.**
+-dontwarn org.ietf.jgss.**
+-dontwarn javax.annotation.**
+
+# Strip log calls from the release build.
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+    public static int w(...);
+}
