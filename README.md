@@ -9,7 +9,7 @@ Replaces the Tasker profiles Camera, Car, Keep Screen On, Power and Volume.
 
 ## Install
 
-1. Download `AdamsPixel9ProApp-1.4.apk` from the [Releases](https://github.com/CARRisma1978/adams-pixel-app/releases) page on the phone and open it.
+1. Download `AdamsPixel9ProApp-1.4.apk` from the [Releases](https://github.com/CARRisma1978/Adams-Pixel-App/releases) page on the phone and open it.
 2. Allow "Install unknown apps" for whichever app you opened it from.
 3. If Play Protect warns that the app was built for an older version of Android, tap
    **More details > Install anyway**. That's expected: the app targets Android 9 on
