@@ -491,18 +491,14 @@ class PiConnection(
      * running), the Pi is told directly. On Android (LineageOS) it asks Android to
      * reboot or shut down cleanly instead.
      */
-    fun power(reboot: Boolean) {
+    /**
+     * Returns null if the Pi started going down (or the connection dropped, which means
+     * the same thing), otherwise the details of what was tried, to show on screen.
+     */
+    fun power(reboot: Boolean): String? {
         val flag = if (reboot) "/tmp/es-sysrestart" else "/tmp/es-shutdown"
         val action = if (reboot) "reboot" else "poweroff"
-        val androidAction = if (reboot) "reboot" else "shutdown"
-        val rebootFlag = if (reboot) "" else "-p"
-        val script = """
-if [ -f /system/build.prop ]; then
-  # Android (e.g. LineageOS): ask Android to shut down cleanly, as root.
-  if [ "$(id -u)" = 0 ]; then svc power $androidAction || reboot $rebootFlag
-  else su -c "svc power $androidAction || reboot $rebootFlag"; fi
-  exit 0
-fi
+        val script = androidPowerScript(reboot) + """
 if pgrep -f '[e]mulationstation/emulationstation' >/dev/null; then
   touch $flag
   pkill -TERM -f '[e]mulationstation/emulationstation'
@@ -514,10 +510,54 @@ if pgrep -f '[e]mulationstation/emulationstation' >/dev/null; then
 fi
 sudo -S -p '' systemctl $action
 """
-        try {
-            run(script, stdin = password + "\n", timeoutMs = 30_000)
+        val out = try {
+            run(script, stdin = password + "\n", timeoutMs = 110_000)
         } catch (e: Exception) {
-            // The connection usually drops as the Pi goes down; that's expected.
+            return null // the connection usually drops as the Pi goes down; that's expected
+        }
+        return if (out.contains("POWER_FAILED")) out.substringAfter("POWER_FAILED").trim() else null
+    }
+
+    companion object {
+        /**
+         * Android (e.g. LineageOS). Each way of asking is tried in turn, from the cleanest
+         * (Android's own shutdown) to the bluntest, with and without Magisk's su, because
+         * which ones are allowed depends on the build's security rules. After each try it
+         * waits a few seconds for Android to say a shutdown has started, so a working
+         * method is never followed by a different one. If none work, it reports why.
+         */
+        fun androidPowerScript(reboot: Boolean): String {
+            val svc = if (reboot) "reboot" else "shutdown"
+            val low = if (reboot) "reboot" else "reboot -p"
+            val prop = if (reboot) "reboot" else "shutdown"
+            return """
+if [ -f /system/build.prop ]; then
+  started() { [ -n "${'$'}(getprop sys.shutdown.requested)" ] || [ -n "${'$'}(getprop sys.powerctl)" ]; }
+  T=""; command -v timeout >/dev/null 2>&1 && T="timeout 10"
+  attempt() {
+    echo "> ${'$'}1"
+    eval "${'$'}T ${'$'}1" 2>&1 | tail -n 3
+    i=0
+    while [ ${'$'}i -lt 6 ]; do
+      if started; then echo POWER_STARTED; exit 0; fi
+      sleep 1; i=${'$'}((i+1))
+    done
+  }
+  HAVE_SU=""; command -v su >/dev/null 2>&1 && HAVE_SU=1
+  attempt "svc power $svc"
+  [ -n "${'$'}HAVE_SU" ] && attempt "su -c 'svc power $svc'"
+  [ -n "${'$'}HAVE_SU" ] && attempt "su -c '$low'"
+  attempt "$low"
+  attempt "setprop sys.powerctl $prop"
+  [ -n "${'$'}HAVE_SU" ] && attempt "su -c 'setprop sys.powerctl $prop'"
+  echo POWER_FAILED
+  echo "user: ${'$'}(id)"
+  echo "security context: ${'$'}(cat /proc/self/attr/current 2>/dev/null)"
+  echo "SELinux: ${'$'}(getenforce 2>/dev/null)"
+  echo "su: ${'$'}(command -v su || echo none)"
+  exit 0
+fi
+"""
         }
     }
 

@@ -198,6 +198,62 @@ class PiIntegrationTest {
         assertTrue(s.memTotal > 0)
     }
 
+    /** Runs the Android power script against fake svc/su/reboot/getprop commands. */
+    private fun runAndroidPower(reboot: Boolean, svcWorks: Boolean, suWorks: Boolean): String {
+        val bin = File("/tmp/fakeandroid/bin").apply { deleteRecursively(); mkdirs() }
+        val props = File("/tmp/fakeandroid/props").apply { deleteRecursively(); mkdirs() }
+        val log = File("/tmp/fakeandroid/log.txt").apply { writeText("") }
+        fun script(name: String, body: String) = File(bin, name).apply {
+            writeText("#!/bin/sh\n$body\n"); setExecutable(true)
+        }
+        // getprop/setprop read and write files; svc and reboot only "work" when allowed.
+        script("getprop", "cat /tmp/fakeandroid/props/${'$'}1 2>/dev/null")
+        script("setprop", "if [ -n \"${'$'}IN_SU\" ] && [ ${if (suWorks) "1" else "0"} = 1 ]; then echo \"${'$'}2\" > /tmp/fakeandroid/props/${'$'}1; echo \"setprop ${'$'}* (su)\" >> ${log.path}; else echo 'Failed to set property: permission denied'; exit 1; fi")
+        script("svc", "echo \"svc ${'$'}* su=${'$'}IN_SU\" >> ${log.path}; " +
+            "if [ ${if (svcWorks) "1" else "0"} = 1 ] || { [ -n \"${'$'}IN_SU\" ] && [ ${if (suWorks) "1" else "0"} = 1 ]; }; " +
+            "then echo 1${'$'}2 > /tmp/fakeandroid/props/sys.shutdown.requested; else echo 'Error: java.lang.SecurityException'; fi")
+        script("reboot", "echo \"reboot ${'$'}* su=${'$'}IN_SU\" >> ${log.path}; if [ -n \"${'$'}IN_SU\" ] && [ ${if (suWorks) "1" else "0"} = 1 ]; then echo x > /tmp/fakeandroid/props/sys.powerctl; else echo 'reboot: permission denied'; exit 1; fi")
+        script("su", "[ \"${'$'}1\" = -c ] && IN_SU=1 sh -c \"${'$'}2\"")
+        File("/system").mkdirs()
+        val marker = File("/system/build.prop").apply { writeText("") }
+        try {
+            val p = ProcessBuilder("sh", "-c", PiConnection.androidPowerScript(reboot)).apply {
+                environment()["PATH"] = "${bin.path}:/usr/bin:/bin"
+                redirectErrorStream(true)
+            }.start()
+            val out = p.inputStream.bufferedReader().readText()
+            p.waitFor()
+            return out + "\n--- calls ---\n" + log.readText()
+        } finally {
+            marker.delete(); File("/system").delete()
+        }
+    }
+
+    @Test
+    fun androidPowerFallsBackToSuAndStopsOnceStarted() {
+        val out = runAndroidPower(reboot = false, svcWorks = false, suWorks = true)
+        println("SU CASE:\n$out")
+        assertTrue(out.contains("POWER_STARTED"))
+        assertTrue(out.contains("svc power shutdown su=1"))
+        assertTrue("nothing tried after it worked", !out.contains("reboot -p"))
+    }
+
+    @Test
+    fun androidPowerPlainSvcWorks() {
+        val out = runAndroidPower(reboot = true, svcWorks = true, suWorks = false)
+        assertTrue(out.contains("POWER_STARTED"))
+        assertEquals(1, Regex("svc power reboot").findAll(out.substringAfter("--- calls ---")).count())
+    }
+
+    @Test
+    fun androidPowerReportsWhyWhenNothingWorks() {
+        val out = runAndroidPower(reboot = true, svcWorks = false, suWorks = false)
+        println("FAIL CASE:\n$out")
+        assertTrue(out.contains("POWER_FAILED"))
+        assertTrue(out.contains("user: uid="))
+        assertTrue(out.contains("SecurityException"))
+    }
+
     @Test
     fun throttleDecoding() {
         assertEquals(1, throttleMessages(0).size)

@@ -25,6 +25,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -138,7 +139,7 @@ fun PiEditScreen(deviceId: String?, onDone: () -> Unit) {
     var name by remember { mutableStateOf(existing?.name ?: "") }
     var host by remember { mutableStateOf(existing?.host ?: "") }
     var port by remember { mutableStateOf((existing?.port ?: 22).toString()) }
-    var user by remember { mutableStateOf(existing?.user ?: "pi") }
+    var user by remember { mutableStateOf(existing?.user ?: "") }
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -201,7 +202,7 @@ fun PiEditScreen(deviceId: String?, onDone: () -> Unit) {
     OutlinedTextField(
         value = user, onValueChange = { user = it; error = null },
         label = { Text("Username") },
-        supportingText = { Text("Usually pi on Raspberry Pi OS, root on LineageOS") },
+        placeholder = { Text("pi for Pi 5, root for Pi 4") },
         singleLine = true, modifier = Modifier.fillMaxWidth(),
     )
 
@@ -392,6 +393,7 @@ fun PiMonitorScreen(deviceId: String, onEdit: () -> Unit) {
     var lastUpdate by remember { mutableLongStateOf(0L) }
     var connection by remember { mutableStateOf<PiConnection?>(null) }
     var powerMessage by remember { mutableStateOf<String?>(null) }
+    var powerError by remember { mutableStateOf<String?>(null) } // details if reboot/shut down didn't work
     var confirm by remember { mutableStateOf<Boolean?>(null) } // true = reboot, false = shut down
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -431,6 +433,29 @@ fun PiMonitorScreen(deviceId: String, onEdit: () -> Unit) {
 
     powerMessage?.let {
         Card(Modifier.fillMaxWidth()) { Text(it, modifier = Modifier.padding(16.dp)) }
+    }
+
+    powerError?.let { details ->
+        Card(
+            Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            ),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SelectionContainer {
+                    Text(details, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = {
+                        ctx.getSystemService(ClipboardManager::class.java)
+                            .setPrimaryClip(ClipData.newPlainText("Pi power details", details))
+                    }) { Text("Copy details") }
+                    TextButton(onClick = { powerError = null }) { Text("Dismiss") }
+                }
+            }
+        }
     }
 
     if (keyChanged) {
@@ -506,9 +531,16 @@ fun PiMonitorScreen(deviceId: String, onEdit: () -> Unit) {
                 TextButton(onClick = {
                     confirm = null
                     val c = connection ?: return@TextButton
+                    powerError = null
                     powerMessage = if (reboot) "Rebooting $label. Come back in a minute and tap Try again."
                     else "Shutting down $label. It's safe to unplug once the green light stops flashing."
-                    scope.launch(Dispatchers.IO) { c.power(reboot) }
+                    scope.launch(Dispatchers.IO) {
+                        val problem = c.power(reboot)
+                        if (problem != null) {
+                            powerMessage = null
+                            powerError = (if (reboot) "Reboot" else "Shut down") + " didn't start.\n\n" + problem
+                        }
+                    }
                 }) { Text(if (reboot) "Reboot" else "Shut down") }
             },
             dismissButton = { TextButton(onClick = { confirm = null }) { Text("Cancel") } },

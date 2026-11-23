@@ -16,8 +16,8 @@ android {
         // Deliberately old. Android only lets apps toggle Bluetooth (blocked from 33)
         // and Wi-Fi (blocked from 29) if they target an older version.
         targetSdk = 28
-        versionCode = 6
-        versionName = "1.5"
+        versionCode = 7
+        versionName = "1.6"
         // The Pixel 9 Pro is 64-bit ARM only; leave out native code for other chips.
         ndk { abiFilters += "arm64-v8a" }
     }
