@@ -9,7 +9,7 @@ Replaces the Tasker profiles Camera, Car, Keep Screen On, Power and Volume.
 
 ## Install
 
-1. Download `AdamsPixel9ProApp-1.4.apk` from the [Releases](https://github.com/CARRisma1978/Adams-Pixel-App/releases) page on the phone and open it.
+1. Download `AdamsPixel9ProApp-1.5.apk` from the [Releases](https://github.com/CARRisma1978/Adams-Pixel-App/releases) page on the phone and open it.
 2. Allow "Install unknown apps" for whichever app you opened it from.
 3. If Play Protect warns that the app was built for an older version of Android, tap
    **More details > Install anyway**. That's expected: the app targets Android 9 on
@@ -31,7 +31,7 @@ Replaces the Tasker profiles Camera, Car, Keep Screen On, Power and Volume.
 | Keep screen on | Quick Settings tile | Sets screen timeout to 23:59:59. Back to normal when you tap the tile again or the screen turns off. |
 | Wireless charging | On a wireless charger | Do Not Disturb: Priority only. Optionally turns Wi-Fi off (back on afterwards). |
 | Volume profiles | Home-screen icon | Normal / Quiet / Silent. The icon and its name show the current profile. Levels default to your Tasker values. Normal and Quiet can also set a ringtone and notification sound. |
-| Pi monitor | Open it in the app | Live stats from one or more Raspberry Pis over SSH, plus Reboot and Shut down (EmulationStation is closed properly first). |
+| Pi monitor | Open it in the app | Live stats from one or more Raspberry Pis over SSH (password or SSH key; Raspberry Pi OS or LineageOS), plus Reboot and Shut down (EmulationStation is closed properly first on RetroPie). |
 
 Long-press any row on the main menu and drag it to reorder.
 

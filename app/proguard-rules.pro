@@ -1,7 +1,9 @@
 # JSch (SSH) creates these by name from its settings, so their names and
 # no-argument constructors must survive shrinking. Generated from jsch 0.2.26.
-# BouncyCastle (bc), GSS-API and zlib variants are left out: they can't work on
-# Android without extra libraries, and JSch skips anything it can't load.
+# GSS-API and zlib variants are left out (JSch skips anything it can't load).
+# From the BouncyCastle (bc) ones, only Ed25519 keys/signatures and X25519 key
+# exchange are kept: that's what Android lacks. The rest (post-quantum, Twofish,
+# etc.) would add over 1 MB for algorithms the app doesn't need.
 -keep class com.jcraft.jsch.CipherNone { <init>(); }
 -keep class com.jcraft.jsch.DH25519 { <init>(); }
 -keep class com.jcraft.jsch.DH25519MLKEM768 { <init>(); }
@@ -103,6 +105,9 @@
 -keep class com.jcraft.jsch.jce.TripleDESCBC { <init>(); }
 -keep class com.jcraft.jsch.jce.TripleDESCTR { <init>(); }
 -keep class com.jcraft.jsch.jce.XDH { <init>(); }
+-keep class com.jcraft.jsch.bc.KeyPairGenEdDSA { <init>(); }
+-keep class com.jcraft.jsch.bc.SignatureEd25519 { <init>(); }
+-keep class com.jcraft.jsch.bc.XDH { <init>(); }
 -dontwarn org.bouncycastle.**
 -dontwarn org.newsclub.**
 -dontwarn com.sun.jna.**

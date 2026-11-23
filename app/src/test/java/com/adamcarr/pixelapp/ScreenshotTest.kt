@@ -82,6 +82,15 @@ class ScreenshotTest {
         save("volume_pi")
     }
 
+    @Test fun piKeyEdit() {
+        PiStore.save(ctx, PiDevice("car", "Car Pi 4", "192.168.1.50", 22, "root", "", null, useKey = true,
+            encPrivateKey = "x", publicKey = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBExample pixel9pro-car"))
+        compose.setContent {
+            AppTheme { Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) { PiEditScreen("car") {} } }
+        }
+        save("pi_key_edit")
+    }
+
     @Test fun shortcutIcons() {
         val out = Bitmap.createBitmap(4 * 216, 216, Bitmap.Config.ARGB_8888)
         val c = Canvas(out); c.drawColor(Color.BLACK)

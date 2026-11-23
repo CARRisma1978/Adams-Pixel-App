@@ -16,8 +16,8 @@ android {
         // Deliberately old. Android only lets apps toggle Bluetooth (blocked from 33)
         // and Wi-Fi (blocked from 29) if they target an older version.
         targetSdk = 28
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 6
+        versionName = "1.5"
         // The Pixel 9 Pro is 64-bit ARM only; leave out native code for other chips.
         ndk { abiFilters += "arm64-v8a" }
     }
@@ -68,6 +68,7 @@ android {
                 "META-INF/NOTICE*",
                 "META-INF/*.txt",
                 "DebugProbesKt.bin",
+                "org/bouncycastle/**", // data files for algorithms the app never uses
             )
         }
     }
@@ -96,6 +97,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("com.github.mwiede:jsch:0.2.26")
+    // Lets JSch use Ed25519 keys on Android (BouncyCastle; only the parts used are kept).
+    implementation("org.bouncycastle:bcprov-jdk18on:1.81")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.14.1")

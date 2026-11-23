@@ -1,5 +1,11 @@
 package com.adamcarr.pixelapp
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -87,7 +93,8 @@ fun PiListScreen(tick: Int, onOpen: (String) -> Unit, onEdit: (String?) -> Unit)
                 ) {
                     Text(d.name.ifBlank { d.host }, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "${d.user}@${d.host}" + if (d.port != 22) ":${d.port}" else "",
+                        "${d.user}@${d.host}" + (if (d.port != 22) ":${d.port}" else "") +
+                            (if (d.useKey) " · key" else ""),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -136,6 +143,41 @@ fun PiEditScreen(deviceId: String?, onDone: () -> Unit) {
     var showPassword by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var useKey by remember { mutableStateOf(existing?.useKey ?: false) }
+    var pendingKey by remember { mutableStateOf<String?>(null) } // new key text, not saved yet
+    var publicKey by remember { mutableStateOf(existing?.publicKey ?: "") }
+    var keyStatus by remember {
+        mutableStateOf(if (existing?.encPrivateKey.isNullOrEmpty()) "No key yet" else "Key saved")
+    }
+    var passphrase by remember { mutableStateOf("") }
+    val hasKey = pendingKey != null || !existing?.encPrivateKey.isNullOrEmpty()
+
+    val importKey = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        error = null
+        val text = try {
+            ctx.contentResolver.openInputStream(uri)?.use { it.readBytes().take(65_536).toByteArray() }
+                ?.toString(Charsets.UTF_8)
+        } catch (e: Exception) {
+            null
+        }
+        if (text == null) {
+            error = "Couldn't read that file."
+            return@rememberLauncherForActivityResult
+        }
+        try {
+            val key = SshKeys.load(text, passphrase)
+            pendingKey = text
+            publicKey = key.publicKey
+            keyStatus = "Imported ${key.type} key (tap Save to keep it)"
+        } catch (e: IllegalArgumentException) {
+            if (e.message?.contains("passphrase") == true) {
+                pendingKey = text
+                keyStatus = "Imported a protected key"
+            }
+            error = e.message
+        }
+    }
 
     OutlinedTextField(
         value = name, onValueChange = { name = it },
@@ -159,12 +201,73 @@ fun PiEditScreen(deviceId: String?, onDone: () -> Unit) {
     OutlinedTextField(
         value = user, onValueChange = { user = it; error = null },
         label = { Text("Username") },
+        supportingText = { Text("Usually pi on Raspberry Pi OS, root on LineageOS") },
         singleLine = true, modifier = Modifier.fillMaxWidth(),
     )
+
+    Text("Sign in with", style = MaterialTheme.typography.titleMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = !useKey, onClick = { useKey = false; error = null }, label = { Text("Password") })
+        FilterChip(selected = useKey, onClick = { useKey = true; error = null }, label = { Text("SSH key") })
+    }
+
+    if (useKey) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("SSH key", style = MaterialTheme.typography.titleMedium)
+                Text(keyStatus, style = MaterialTheme.typography.bodyMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { importKey.launch(arrayOf("*/*")) }) { Text("Import key file") }
+                    OutlinedButton(onClick = {
+                        val key = SshKeys.generate("pixel9pro-${name.trim().ifBlank { "pi" }.replace(" ", "-")}")
+                        pendingKey = key.privateKey
+                        publicKey = key.publicKey
+                        passphrase = ""
+                        keyStatus = "Created a new key for this phone (tap Save to keep it)"
+                        error = null
+                    }) { Text("Create new key") }
+                }
+                OutlinedTextField(
+                    value = passphrase, onValueChange = { passphrase = it; error = null },
+                    label = { Text("Key passphrase (only if it has one)") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (publicKey.isNotEmpty()) {
+                    Text("Public key for this phone", style = MaterialTheme.typography.labelLarge)
+                    SelectionContainer {
+                        Text(publicKey, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = {
+                            ctx.getSystemService(ClipboardManager::class.java)
+                                .setPrimaryClip(ClipData.newPlainText("SSH public key", publicKey))
+                        }) { Text("Copy") }
+                        TextButton(onClick = {
+                            val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                                .putExtra(Intent.EXTRA_SUBJECT, "SSH key for ${name.ifBlank { host }}")
+                                .putExtra(Intent.EXTRA_TEXT, keyInstructions(publicKey))
+                            ctx.startActivity(Intent.createChooser(send, "Send the key and instructions"))
+                        }) { Text("Share with instructions") }
+                    }
+                    Body(
+                        "If you created a new key, add this line to the Pi once. On LineageOS it goes in " +
+                            "/data/ssh/authorized_keys, on Raspberry Pi OS in ~/.ssh/authorized_keys. " +
+                            "Share with instructions sends the exact commands."
+                    )
+                }
+                Body("The private key never leaves this phone and is stored encrypted.")
+            }
+        }
+    }
+
     OutlinedTextField(
         value = password, onValueChange = { password = it; error = null },
-        label = { Text("Password") },
-        placeholder = { if (existing != null) Text("Leave blank to keep the saved one") },
+        label = { Text(if (useKey) "Password (optional)" else "Password") },
+        placeholder = {
+            if (existing != null && existing.encPassword.isNotEmpty()) Text("Leave blank to keep the saved one")
+        },
         singleLine = true,
         visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -178,16 +281,32 @@ fun PiEditScreen(deviceId: String?, onDone: () -> Unit) {
         },
         modifier = Modifier.fillMaxWidth(),
     )
-    Body("The password is stored encrypted on this phone. It's also used for sudo when you reboot or shut down.")
+    Body(
+        if (useKey) "With a key, a password is only needed if Raspberry Pi OS asks for one for sudo when rebooting or shutting down."
+        else "The password is stored encrypted on this phone. It's also used for sudo when you reboot or shut down."
+    )
     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     Button(
         onClick = {
             val portNum = port.toIntOrNull()
+            // Check a newly imported/created key (and its passphrase) before saving.
+            var checkedPublic = publicKey
+            val newKey = pendingKey
+            val keyError = if (useKey && newKey != null) {
+                try {
+                    checkedPublic = SshKeys.load(newKey, passphrase).publicKey.ifEmpty { publicKey }
+                    null
+                } catch (e: IllegalArgumentException) {
+                    e.message
+                }
+            } else null
             error = when {
                 host.isBlank() -> "Enter the Pi's IP address"
                 user.isBlank() -> "Enter a username"
                 portNum == null || portNum !in 1..65535 -> "Enter a port between 1 and 65535"
-                existing == null && password.isEmpty() -> "Enter the password"
+                !useKey && password.isEmpty() && existing?.encPassword.isNullOrEmpty() -> "Enter the password"
+                useKey && !hasKey -> "Import or create an SSH key"
+                keyError != null -> keyError
                 else -> null
             }
             if (error == null) {
@@ -200,9 +319,17 @@ fun PiEditScreen(deviceId: String?, onDone: () -> Unit) {
                         host = trimmedHost,
                         port = portNum ?: 22,
                         user = user.trim(),
-                        encPassword = if (password.isEmpty()) existing!!.encPassword else Secret.encrypt(password),
+                        encPassword = if (password.isEmpty()) existing?.encPassword.orEmpty() else Secret.encrypt(password),
                         // A different address is a different machine: forget the old identity.
                         hostKey = if (existing != null && existing.host == trimmedHost && existing.port == portNum) existing.hostKey else null,
+                        useKey = useKey,
+                        encPrivateKey = if (newKey != null) Secret.encrypt(newKey) else existing?.encPrivateKey.orEmpty(),
+                        encPassphrase = when {
+                            newKey != null -> if (passphrase.isEmpty()) "" else Secret.encrypt(passphrase)
+                            passphrase.isNotEmpty() -> Secret.encrypt(passphrase)
+                            else -> existing?.encPassphrase.orEmpty()
+                        },
+                        publicKey = checkedPublic,
                     )
                 )
                 onDone()
@@ -221,7 +348,7 @@ fun PiEditScreen(deviceId: String?, onDone: () -> Unit) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete ${existing.name.ifBlank { existing.host }}?") },
-            text = { Text("Its saved address and password will be removed from this phone.") },
+            text = { Text("Its saved address, password and key will be removed from this phone.") },
             confirmButton = {
                 TextButton(onClick = {
                     PiStore.delete(ctx, existing.id)
@@ -233,6 +360,19 @@ fun PiEditScreen(deviceId: String?, onDone: () -> Unit) {
         )
     }
 }
+
+/** Text sent by "Share with instructions": the key plus the commands to add it. */
+fun keyInstructions(publicKey: String): String = """
+Public key for Adam's Pixel 9 Pro App:
+
+$publicKey
+
+LineageOS (on the laptop, with adb connected to the Pi):
+adb shell "su -c 'echo $publicKey >> /data/ssh/authorized_keys'"
+
+Raspberry Pi OS (on the Pi, logged in as the user the app connects as):
+mkdir -p ~/.ssh && echo "$publicKey" >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+""".trim()
 
 // ---------------------------------------------------------------- Live monitor
 
@@ -343,7 +483,10 @@ fun PiMonitorScreen(deviceId: String, onEdit: () -> Unit) {
                 modifier = Modifier.weight(1f),
             ) { Text("Shut down") }
         }
-        Body("EmulationStation is closed properly first, so game lists and favourites are saved.")
+        Body(
+            if (stats?.android == true) "Android is asked to shut down cleanly. This needs root (user root, or su)."
+            else "EmulationStation is closed properly first, so game lists and favourites are saved."
+        )
     }
 
     OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Text("Edit details") }
@@ -376,6 +519,7 @@ fun PiMonitorScreen(deviceId: String, onEdit: () -> Unit) {
 @Composable
 internal fun StatsCards(s: PiStats, lastUpdate: Long, live: Boolean) {
     StatCard(s.model.ifBlank { "Raspberry Pi" }) {
+        if (s.android) LabelValue("System", "Android" + if (s.osName.isNotBlank()) " (${s.osName})" else "")
         LabelValue("Hostname", s.hostname)
         LabelValue("Up for", formatUptime(s.uptimeSec))
         LabelValue(
@@ -411,8 +555,9 @@ internal fun StatsCards(s: PiStats, lastUpdate: Long, live: Boolean) {
                 },
             )
         }
-        LabelValue("Fan", s.fanRpm?.let { "${String.format(Locale.UK, "%,d", it)} rpm" } ?: "No fan reading")
-        throttleMessages(s.throttled).forEach { (text, bad) ->
+        // Fan and throttling come from Raspberry Pi OS tools, so they're not shown on Android.
+        if (!s.android) LabelValue("Fan", s.fanRpm?.let { "${String.format(Locale.UK, "%,d", it)} rpm" } ?: "No fan reading")
+        if (!s.android) throttleMessages(s.throttled).forEach { (text, bad) ->
             Text(
                 text,
                 style = MaterialTheme.typography.bodyMedium,

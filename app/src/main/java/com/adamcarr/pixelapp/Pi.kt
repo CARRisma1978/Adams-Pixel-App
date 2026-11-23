@@ -10,6 +10,7 @@ import com.jcraft.jsch.HostKey
 import com.jcraft.jsch.HostKeyRepository
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.JSchChangedHostKeyException
+import com.jcraft.jsch.KeyPair
 import com.jcraft.jsch.Session
 import com.jcraft.jsch.UIKeyboardInteractive
 import com.jcraft.jsch.UserInfo
@@ -33,10 +34,16 @@ data class PiDevice(
     val user: String,
     val encPassword: String,
     val hostKey: String?, // remembered on first connect
+    val useKey: Boolean = false, // sign in with an SSH key instead of a password
+    val encPrivateKey: String = "",
+    val encPassphrase: String = "",
+    val publicKey: String = "", // shown so it can be added to the Pi
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("name", name).put("host", host).put("port", port)
         .put("user", user).put("pw", encPassword).put("hostKey", hostKey ?: "")
+        .put("useKey", useKey).put("key", encPrivateKey).put("keyPass", encPassphrase)
+        .put("pubKey", publicKey)
 
     companion object {
         fun fromJson(o: JSONObject) = PiDevice(
@@ -47,6 +54,10 @@ data class PiDevice(
             user = o.optString("user"),
             encPassword = o.optString("pw"),
             hostKey = o.optString("hostKey").ifEmpty { null },
+            useKey = o.optBoolean("useKey", false),
+            encPrivateKey = o.optString("key"),
+            encPassphrase = o.optString("keyPass"),
+            publicKey = o.optString("pubKey"),
         )
 
         fun newId(): String = UUID.randomUUID().toString()
@@ -135,9 +146,57 @@ object Secret {
     private fun unb64(s: String) = Base64.decode(s, Base64.NO_WRAP)
 }
 
+// ---------------------------------------------------------------- SSH keys
+
+/** A private key in OpenSSH/PEM text form, plus the one-line public key to put on the Pi. */
+data class SshKey(val privateKey: String, val publicKey: String, val type: String)
+
+object SshKeys {
+    /**
+     * Creates a new key for this phone. ECDSA (P-256): every SSH server accepts it, and
+     * JSch can save it in a standard format (it can't write Ed25519 private keys).
+     */
+    fun generate(comment: String): SshKey {
+        val kp = KeyPair.genKeyPair(JSch(), KeyPair.ECDSA, 256)
+        val prv = ByteArrayOutputStream().also { kp.writePrivateKey(it) }.toString(Charsets.UTF_8.name())
+        val pub = ByteArrayOutputStream().also { kp.writePublicKey(it, comment) }.toString(Charsets.UTF_8.name()).trim()
+        kp.dispose()
+        return SshKey(prv, pub, "ecdsa")
+    }
+
+    /**
+     * Reads a private key file. Throws with a friendly message if it isn't one.
+     * [passphrase] is only needed if the key is protected by one.
+     */
+    fun load(text: String, passphrase: String?): SshKey {
+        if (!text.contains("PRIVATE KEY")) {
+            throw IllegalArgumentException(
+                if (text.trimStart().startsWith("ssh-")) "That's a public key. Choose the private key file instead."
+                else "That file isn't an SSH private key."
+            )
+        }
+        val kp = try {
+            KeyPair.load(JSch(), text.toByteArray(Charsets.UTF_8), null)
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Couldn't read that key file (${e.message ?: "unknown format"}).")
+        }
+        if (kp.isEncrypted) {
+            if (passphrase.isNullOrEmpty()) throw IllegalArgumentException("This key is protected. Enter its passphrase.")
+            if (!kp.decrypt(passphrase)) throw IllegalArgumentException("Wrong passphrase for this key.")
+        }
+        val blob = kp.publicKeyBlob
+        val type = kp.keyTypeString ?: "key"
+        val pub = if (blob != null) "$type ${Base64.encodeToString(blob, Base64.NO_WRAP)} phone" else ""
+        kp.dispose()
+        return SshKey(text, pub, type.removePrefix("ssh-"))
+    }
+}
+
 // ---------------------------------------------------------------- Stats
 
 data class PiStats(
+    val android: Boolean = false, // e.g. LineageOS rather than Raspberry Pi OS
+    val osName: String = "",
     val model: String = "",
     val hostname: String = "",
     val uptimeSec: Long = 0,
@@ -205,8 +264,8 @@ class StatsParser {
         val swapTotal = mem["SwapTotal"] ?: 0L
 
         val disk = sec("disk").firstOrNull()?.split(Regex("\\s+"))
-        val diskTotal = disk?.getOrNull(1)?.toLongOrNull() ?: 0L
-        val diskUsed = disk?.getOrNull(2)?.toLongOrNull() ?: 0L
+        val diskTotal = (disk?.getOrNull(1)?.toLongOrNull() ?: 0L) * 1024L
+        val diskUsed = (disk?.getOrNull(2)?.toLongOrNull() ?: 0L) * 1024L
 
         var rx = 0L
         var tx = 0L
@@ -229,7 +288,10 @@ class StatsParser {
         val throttled = sec("throttled").firstOrNull()
             ?.substringAfter("=", "")?.removePrefix("0x")?.toIntOrNull(16)
 
+        val os = sec("os")
         return PiStats(
+            android = os.firstOrNull() == "android",
+            osName = os.getOrNull(1).orEmpty(),
             model = sec("model").firstOrNull().orEmpty(),
             hostname = sec("host").firstOrNull().orEmpty(),
             uptimeSec = sec("uptime").firstOrNull()?.split(" ")?.firstOrNull()?.toDoubleOrNull()?.toLong() ?: 0L,
@@ -257,7 +319,9 @@ class StatsParser {
 
     companion object {
         /** One command that prints every figure, split into "@section" blocks. */
+        // Works on Raspberry Pi OS and on Android (LineageOS), whose commands come from toybox.
         const val COMMAND = """
+echo @os; if [ -f /system/build.prop ]; then echo android; getprop ro.lineage.version 2>/dev/null || getprop ro.build.version.release; fi
 echo @stat; grep '^cpu' /proc/stat
 echo @mem; grep -E '^(MemTotal|MemAvailable|SwapTotal|SwapFree):' /proc/meminfo
 echo @load; cat /proc/loadavg
@@ -266,11 +330,11 @@ echo @temp; cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null
 echo @freq; cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null
 echo @throttled; vcgencmd get_throttled 2>/dev/null
 echo @fan; cat /sys/devices/platform/cooling_fan/hwmon/*/fan1_input 2>/dev/null
-echo @disk; df -B1 -P / | tail -n 1
+echo @disk; if [ -f /system/build.prop ]; then df -kP /data; else df -kP /; fi | tail -n 1
 echo @net; tail -n +3 /proc/net/dev
-echo @model; tr -d '\0' < /proc/device-tree/model 2>/dev/null; echo
-echo @host; hostname
-echo @top; ps -eo pcpu,pmem,comm --sort=-pcpu --no-headers | head -n 5
+echo @model; cat /proc/device-tree/model 2>/dev/null | tr -d '\0'; echo
+echo @host; h=""; [ -f /system/build.prop ] && h=$(getprop net.hostname 2>/dev/null); [ -n "${'$'}h" ] && echo "${'$'}h" || hostname
+echo @top; if [ -f /system/build.prop ]; then ps -A -o %CPU,%MEM,NAME -k -%CPU | sed -n '2,6p'; else ps -eo pcpu,pmem,comm --sort=-pcpu --no-headers | head -n 5; fi
 """
     }
 }
@@ -288,8 +352,15 @@ class PiConnection(
     private val ctx: Context,
     private val device: PiDevice,
     private val trustNewKey: Boolean,
-    private val password: String = Secret.decrypt(device.encPassword)
-        ?: throw PiAuthException("Password couldn't be read. Edit the Pi's details and enter it again."),
+    // With a key, the password is optional (only used for sudo on Raspberry Pi OS).
+    private val password: String = when {
+        device.useKey && device.encPassword.isEmpty() -> ""
+        else -> Secret.decrypt(device.encPassword)
+            ?: throw PiAuthException("Password couldn't be read. Edit the Pi's details and enter it again.")
+    },
+    private val privateKey: String? = if (!device.useKey) null else Secret.decrypt(device.encPrivateKey)
+        ?: throw PiAuthException("No SSH key saved for this Pi. Edit its details and import or create one."),
+    private val passphrase: String? = device.encPassphrase.takeIf { it.isNotEmpty() }?.let { Secret.decrypt(it) },
 ) {
     private var session: Session? = null
 
@@ -342,11 +413,22 @@ class PiConnection(
         val jsch = JSch()
         val repo = Repo()
         jsch.hostKeyRepository = repo
+        if (privateKey != null) {
+            try {
+                jsch.addIdentity("phone-key", privateKey.toByteArray(Charsets.UTF_8), null, passphrase?.toByteArray(Charsets.UTF_8))
+            } catch (e: Exception) {
+                throw PiAuthException("This Pi's SSH key couldn't be used (${e.message}). Edit its details and import it again.")
+            }
+        }
         val s = jsch.getSession(device.user, device.host, device.port)
-        s.setPassword(password)
         s.userInfo = Prompts(repo)
         s.setConfig("StrictHostKeyChecking", "ask")
-        s.setConfig("PreferredAuthentications", "password,keyboard-interactive")
+        if (privateKey != null) {
+            s.setConfig("PreferredAuthentications", "publickey")
+        } else {
+            s.setPassword(password)
+            s.setConfig("PreferredAuthentications", "password,keyboard-interactive")
+        }
         s.timeout = 8_000
         try {
             s.connect(8_000)
@@ -357,7 +439,10 @@ class PiConnection(
             throw when {
                 msg.contains("Auth fail", true) || msg.contains("Auth cancel", true) ||
                     msg.contains("authentication failures", true) ->
-                    PiAuthException("Username or password was rejected.")
+                    PiAuthException(
+                        if (privateKey != null) "The Pi didn't accept this key for user '${device.user}'. Check its public key has been added to the Pi."
+                        else "Username or password was rejected."
+                    )
                 msg.contains("timeout", true) || msg.contains("timed out", true) ->
                     PiAuthException("No reply from ${device.host}. Is the phone on the same Wi-Fi as the Pi?")
                 msg.contains("refused", true) ->
@@ -403,12 +488,21 @@ class PiConnection(
      * Reboot or shut down. If EmulationStation is running, it's asked to quit first using
      * RetroPie's own flag file, so game lists and favourites are saved; RetroPie then
      * reboots or powers off itself. If it hasn't gone within 15 seconds (e.g. a game is
-     * running), the Pi is told directly.
+     * running), the Pi is told directly. On Android (LineageOS) it asks Android to
+     * reboot or shut down cleanly instead.
      */
     fun power(reboot: Boolean) {
         val flag = if (reboot) "/tmp/es-sysrestart" else "/tmp/es-shutdown"
         val action = if (reboot) "reboot" else "poweroff"
+        val androidAction = if (reboot) "reboot" else "shutdown"
+        val rebootFlag = if (reboot) "" else "-p"
         val script = """
+if [ -f /system/build.prop ]; then
+  # Android (e.g. LineageOS): ask Android to shut down cleanly, as root.
+  if [ "$(id -u)" = 0 ]; then svc power $androidAction || reboot $rebootFlag
+  else su -c "svc power $androidAction || reboot $rebootFlag"; fi
+  exit 0
+fi
 if pgrep -f '[e]mulationstation/emulationstation' >/dev/null; then
   touch $flag
   pkill -TERM -f '[e]mulationstation/emulationstation'

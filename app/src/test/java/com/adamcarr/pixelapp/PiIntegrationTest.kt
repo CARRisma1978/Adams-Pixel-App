@@ -119,6 +119,85 @@ class PiIntegrationTest {
         assertEquals("SUDO pw=raspberry cmd=systemctl reboot", text.trim())
     }
 
+    private fun keyDevice(id: String, keyFile: String) =
+        PiDevice(id, "Key Pi", "127.0.0.1", 2222, "pi", "", null, useKey = true).also { PiStore.save(ctx, it) }
+
+    @Test
+    fun signInWithEd25519KeyFile() {
+        assumeTrue(serverUp())
+        val text = File("/tmp/sshtest/keys/id_ed25519").readText()
+        val key = SshKeys.load(text, null)
+        println("PUBLIC: ${key.publicKey}")
+        assertEquals("ed25519", key.type)
+        assertTrue(key.publicKey.startsWith("ssh-ed25519 AAAA"))
+        val c = PiConnection(ctx, keyDevice("k1", "id_ed25519"), false, password = "", privateKey = text, passphrase = null)
+        c.connect()
+        assertTrue(c.run("echo hello").contains("hello"))
+        c.disconnect()
+    }
+
+    @Test
+    fun protectedKeyNeedsPassphrase() {
+        assumeTrue(serverUp())
+        val text = File("/tmp/sshtest/keys/id_prot").readText()
+        try { SshKeys.load(text, null); fail() } catch (e: IllegalArgumentException) { println("MSG: ${e.message}") }
+        try { SshKeys.load(text, "wrong"); fail() } catch (e: IllegalArgumentException) { println("MSG: ${e.message}") }
+        assertEquals("ed25519", SshKeys.load(text, "secret123").type)
+        val c = PiConnection(ctx, keyDevice("k2", "id_prot"), false, password = "", privateKey = text, passphrase = "secret123")
+        c.connect(); c.disconnect()
+    }
+
+    @Test
+    fun keyNotOnThePiGivesClearMessage() {
+        assumeTrue(serverUp())
+        val generated = SshKeys.generate("pixel9pro-test")
+        assertTrue(generated.publicKey.startsWith("ecdsa-sha2-nistp256 "))
+        // The new key round-trips through load().
+        assertEquals(generated.publicKey.split(" ")[1], SshKeys.load(generated.privateKey, null).publicKey.split(" ")[1])
+        try {
+            PiConnection(ctx, keyDevice("k3", ""), false, password = "", privateKey = generated.privateKey, passphrase = null).connect()
+            fail()
+        } catch (e: PiAuthException) {
+            println("MSG: ${e.message}")
+            assertTrue(e.message!!.contains("didn't accept this key"))
+        }
+    }
+
+    @Test
+    fun publicKeyFileIsRejected() {
+        try { SshKeys.load(File("/tmp/sshtest/keys/id_ed25519.pub").readText(), null); fail() }
+        catch (e: IllegalArgumentException) { assertTrue(e.message!!.contains("public key")) }
+    }
+
+    @Test
+    fun androidStatsParse() {
+        assumeTrue(File("/tmp/toybin/ps").exists())
+        // Pretend to be Android just for this test.
+        File("/system").mkdirs(); File("/data").mkdirs()
+        val marker = File("/system/build.prop").apply { writeText("") }
+        try { androidStatsParseInner() } finally { marker.delete(); File("/system").delete() }
+    }
+
+    private fun androidStatsParseInner() {
+        fun runCmd(): String {
+            val p = ProcessBuilder("sh", "-c", StatsParser.COMMAND).apply {
+                environment()["PATH"] = "/tmp/toybin:/usr/bin:/bin"
+            }.start()
+            return p.inputStream.bufferedReader().readText().also { p.waitFor() }
+        }
+        val parser = StatsParser()
+        parser.parse(runCmd(), System.currentTimeMillis())
+        Thread.sleep(1000)
+        val s = parser.parse(runCmd(), System.currentTimeMillis())
+        println("ANDROID PARSED: $s")
+        assertTrue(s.android)
+        assertTrue(s.osName.contains("KonstaKANG"))
+        assertEquals("lineage-car", s.hostname)
+        assertTrue(s.diskTotal > 1_000_000_000L)
+        assertTrue(s.top.isNotEmpty())
+        assertTrue(s.memTotal > 0)
+    }
+
     @Test
     fun throttleDecoding() {
         assertEquals(1, throttleMessages(0).size)
